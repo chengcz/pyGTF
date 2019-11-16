@@ -22,22 +22,17 @@ python setup.py install
    import sys
    from pyGTF import Transcript, GTFReader
    
-   for i in GTFReader('data/ath.chr1.gff.gz'):
-       print(i.summary)
-       print('format1: bed')
-       i.to_bed(sys.stdout)
-       print('format2: gtf')
-       i.to_gtf(sys.stdout)
-       break
+   with GTFReader('data/ath.chr1.gff.gz', flag_stream=True) as fi:
+     # flag_stream:    bool, parse stype of gtf, use less menory
+       for i in fi:
+     	# for i in GTFReader('data/ath.chr1.gff.gz', flag_stream=True):
+           print(i.summary)
+           print('format1: bed')
+           i.to_bed(sys.stdout)
+           print('format2: gtf')
+           i.to_gtf(sys.stdout)
+           break
    dir(t)    # check Transcript object attribution and methods
-   
-   ##########
-   ### GTFReader.safe_mode accept unsort GTF/GFF file
-   ##########
-   fp = GTFReader('data/ath.chr1.gff.gz')
-   for i in fp.safe_mode():
-     print(i)
-     break
    ```
 
    
@@ -49,7 +44,8 @@ python setup.py install
    ```python
    from pyGTF import Transcript, RefSeqGFFReader
    
-   for i in RefSeqGFFReader('data/hg38.refseq.chr22.gff.gz'):
+   for i in RefSeqGFFReader('data/hg38.refseq.chr22.gff.gz', strict=False):
+     	# strict： bool, whether to strictly verify the gene/exon interval
        print(i.summary)
       	break
    ```
@@ -79,5 +75,6 @@ python setup.py install
        print(i)
        break
    
-   dir(i)    # check Sequence object attribution and methods
+   # for r1, r2 in FastqReader('fq1', 'fq2'):
+   #   	pass
    ```
