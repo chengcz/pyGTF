@@ -1,12 +1,17 @@
 #!/usr/bin/env python
 # -*- coding:utf-8 -*-
 
+from __future__ import print_function, division
 import os
 import sys
 import bz2
 import gzip
 import logging
 from collections import OrderedDict
+try:    # python2
+    from string import maketrans
+except ImportError:
+    maketrans = str.maketrans
 
 __package__ = 'pyGTF'
 __version__ = '0.1.1'
@@ -87,7 +92,7 @@ class Sequence(object):
     qualstr: string
     '''
     __slots__ = ('_name', '_seq', '_descr', '_qual')
-    __transtab = str.maketrans('ATGCNatgcn', 'TACGNtacgn')
+    __transtab = maketrans('ATGCNatgcn', 'TACGNtacgn')
     def __init__(self, name, seq, descr=None, qual=None):
         self._name = name
         self._seq = seq
@@ -860,6 +865,8 @@ class Transcript(object):
         )
         for label, regions in tmp:
             for region in regions:
+                if region.is_empty():
+                    continue
                 start, end = region.lower, region.upper
                 line = (self._chrom, '.', label, start + 1, end, '.', self._strand, '.', attr)
                 Record.append(line)
@@ -1098,7 +1105,7 @@ class Transcript(object):
         '''
         utr5, = self.extract_utr5_seq(seqfp)
         utr3, = self.extract_utr3_seq(seqfp)
-        return (*utr5, *utr3)
+        return (utr5, utr3)
 
 
 class GTFReader(Files):
@@ -1113,9 +1120,9 @@ class GTFReader(Files):
     __slots__ = (
         '_gene_feature', '_transcript_feature', '_utr_feature', 
         '_keep_feature', '_skip_feature', '_novel_feature', '_flag_stream',
-        '_drop_attr',
+        '_drop_attr', '_strict'
     )
-    def __init__(self, gtf, flag_stream=True):
+    def __init__(self, gtf, flag_stream=True, strict=True):
         self._gene_feature = {
             'gene', 'ncRNA_gene', 'pseudogene',
         }
@@ -1142,6 +1149,7 @@ class GTFReader(Files):
         }
         self._novel_feature = []
         self._flag_stream = flag_stream
+        self._strict = strict
         self._drop_attr = ('ID', 'Parent', 'Name')
         Files.__init__(self, gtf)
 
@@ -1168,7 +1176,7 @@ class GTFReader(Files):
                 }
             yield Transcript(
                 _transid, _chro, _interval, _strand, 
-                exon=_exon, cds=_cds, utr=_utr, infor=_attr
+                exon=_exon, cds=_cds, utr=_utr, infor=_attr, strict=self._strict
             )
 
     def __stream_mode(self):
@@ -1414,7 +1422,7 @@ class RefSeqGFFReader(Files):
         logger.info('Done of Read gff, parse transcript structure ...')
 
         drop_attr = (
-            'ID', 'Parent', 'Name', 'gene', 'product', 'gbkey', 'start_range', 
+            'ID', 'Parent', 'Name', 'gene', 'gbkey', 'start_range', 
             'pseudo', 'Note', 'description', 'model_evidence', 'standard_name'
         )
         index = 0
