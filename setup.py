@@ -21,7 +21,7 @@ setup(
     keywords='Fastx, GTF, GFF, RefSeq',
     py_modules=['pyGTF'],
     # packages = find_packages(),
-    include_package_data = True,
+    include_package_data = False,
     # platforms = 'any',
     # install_requires = None,
 )

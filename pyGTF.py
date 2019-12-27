@@ -7,6 +7,7 @@ import sys
 import bz2
 import gzip
 import logging
+import argparse
 from collections import OrderedDict
 try:    # python2
     from string import maketrans
@@ -21,9 +22,9 @@ __url__     = 'https://github.com/chengcz/pyGTF'
 __description__ = 'pure python parser of Fastx, GTF, NCBI GFF files'
 
 __all__ = [
-    'Files', 
-    'Sequence', 'FastaReader', 'FastqReader', 
-    'Interval', 'intervals', 'Transcript', 
+    'Files',
+    'Sequence', 'FastaReader', 'FastqReader',
+    'Interval', 'intervals', 'Transcript',
     'GTFReader', 'RefSeqGFFReader', 'BedReader', 'genePredReader'
 ]
 
@@ -45,7 +46,7 @@ class Files(object):
 
     def __enter__(self):
         return self
- 
+
     def __exit__(self, rtype, value, trace):
         self._fp.close()
         logger.debug(rtype)
@@ -86,9 +87,9 @@ class Sequence(object):
     '''
     parameter
     ---------
-    name:    string, 
+    name:    string,
     seq:     string, ATGCNatgcn for nucl
-    descri:  string, 
+    descri:  string,
     qualstr: string
     '''
     __slots__ = ('_name', '_seq', '_descr', '_qual')
@@ -192,7 +193,7 @@ class FastaReader(Files):
 
     def __enter__(self):
         return self
- 
+
     def __exit__(self, rtype, value, trace):
         logger.debug(rtype)
         logger.debug(value)
@@ -239,7 +240,7 @@ class FastqReader(object):
 
     def __enter__(self):
         return self
- 
+
     def __exit__(self, rtype, value, trace):
         logger.debug(rtype)
         logger.debug(value)
@@ -640,16 +641,16 @@ class Transcript(object):
     chro:       sting, chromesome ID
     interval:   Interval, 0-based location
     strand:     string, choices from {-, +}
-    exon:       Interval, 
+    exon:       Interval,
     cds:        Interval,
     utr:        Interval,
-    infor:      dict, attr of gtf file 
+    infor:      dict, attr of gtf file
     '''
     __slots__ = (
-        '_id', '_chrom', '_interval', '_start', '_end', '_strand', 
+        '_id', '_chrom', '_interval', '_start', '_end', '_strand',
         '_exon', '_cds', '_utr', '_attri', '_utr5', '_utr3', '_msg'
     )
-    def __init__(self, Tid, chro, interval, strand, exon=None, 
+    def __init__(self, Tid, chro, interval, strand, exon=None,
         cds=None, utr=None, infor=None, strict=True
     ):
         self._id = Tid
@@ -714,7 +715,7 @@ class Transcript(object):
                 self._utr = Interval()
         else:
             raise StructureInforError('Exon & Cds interval both is missing.')
-            
+
     def __data_validation(self, strict=True):
         if self._strand not in ('-', '+'):
             raise StructureInforError('unsupported strand Symbol, select from (-, +)')
@@ -722,7 +723,7 @@ class Transcript(object):
             raise StructureInforError('Transcript interval is wrong.')
         if self._exon.is_empty():
             raise StructureInforError('Exon interval is wrong.')
-        
+
         if self._exon.to_atomic() != self._interval:
             raise StructureInforError('Unmatched interval between Transcript with Exon.')
         if (not self._cds.is_empty()) or (not self._utr.is_empty()):
@@ -731,7 +732,7 @@ class Transcript(object):
         if (not self._cds.is_empty()) and (not self._utr.is_empty()):
             if not (self._cds & self._utr).is_empty():
                 raise StructureInforError('CDS interval Overlap with UTR interval.')
-            
+
     def __len__(self):
         return self.length
 
@@ -855,7 +856,7 @@ class Transcript(object):
         attr = self.__attri_of_gtfline()
 
         transcript = (
-            self._chrom, '.', 'transcript', self._start + 1, self._end, 
+            self._chrom, '.', 'transcript', self._start + 1, self._end,
             '.', self._strand, '.', attr,
         )
         Record = []
@@ -953,7 +954,7 @@ class Transcript(object):
         id, chro, start, end, strand, name, type, length, gene_id, gene_name, gene_type
         '''
         summary = (
-            self.id, self.chrom, self.start, self.end, self.strand, 
+            self.id, self.chrom, self.start, self.end, self.strand,
             self.name, self.biotype, self.length,
             self.gene_id, self.gene_name, self.gene_biotype
         )
@@ -1118,7 +1119,7 @@ class GTFReader(Files):
     flag_stream:    bool, parse file style, stream style use less memery
     '''
     __slots__ = (
-        '_gene_feature', '_transcript_feature', '_utr_feature', 
+        '_gene_feature', '_transcript_feature', '_utr_feature',
         '_keep_feature', '_skip_feature', '_novel_feature', '_flag_stream',
         '_drop_attr', '_strict'
     )
@@ -1161,7 +1162,7 @@ class GTFReader(Files):
 
     def __enter__(self):
         return self
- 
+
     def __exit__(self, rtype, value, trace):
         logger.debug(rtype)
         logger.debug(value)
@@ -1175,7 +1176,7 @@ class GTFReader(Files):
                     x: y for x, y in _attr.items() if (x not in self._drop_attr) and y
                 }
             yield Transcript(
-                _transid, _chro, _interval, _strand, 
+                _transid, _chro, _interval, _strand,
                 exon=_exon, cds=_cds, utr=_utr, infor=_attr, strict=self._strict
             )
 
@@ -1301,7 +1302,7 @@ class RefSeqGFFReader(Files):
 
     def __enter__(self):
         return self
- 
+
     def __exit__(self, rtype, value, trace):
         logger.debug(rtype)
         logger.debug(value)
@@ -1316,7 +1317,7 @@ class RefSeqGFFReader(Files):
         for uniqx in self.__parse_refseq_gff():
             transid_, chro, interval_, strand, exon, cds, attr = uniqx
             yield Transcript(
-                transid_, self._chrom.get(chro, chro), interval_, strand, 
+                transid_, self._chrom.get(chro, chro), interval_, strand,
                 exon=exon, cds=cds, infor=attr, strict=self._strict
             )
 
@@ -1422,7 +1423,7 @@ class RefSeqGFFReader(Files):
         logger.info('Done of Read gff, parse transcript structure ...')
 
         drop_attr = (
-            'ID', 'Parent', 'Name', 'gene', 'gbkey', 'start_range', 
+            'ID', 'Parent', 'Name', 'gene', 'gbkey', 'start_range',
             'pseudo', 'Note', 'description', 'model_evidence', 'standard_name'
         )
         index = 0
@@ -1455,7 +1456,7 @@ class RefSeqGFFReader(Files):
                     t_attr['gene_id'] = geneid
                     t_attr['gene_name'] = g_attr.get('gene_name', None)
                     t_attr['gene_type'] = g_attr.get('gene_type', None)
-                
+
                 transid_ = t_attr.get('transcript_id', transid)
                 t_attr = {
                     x: y for x, y in t_attr.items() if (x not in drop_attr) and y
@@ -1467,8 +1468,9 @@ class BedReader(Files):
     '''
     '''
     __slots__ = ()
-    def __init__(self, bed):
+    def __init__(self, bed, strict=True):
         Files.__init__(self, bed)
+        self._strict = strict
 
     def __str__(self):
         return "<BedReader object: \"{}\">".format(self._fos)
@@ -1478,7 +1480,7 @@ class BedReader(Files):
 
     def __enter__(self):
         return self
- 
+
     def __exit__(self, rtype, value, trace):
         logger.debug(rtype)
         logger.debug(value)
@@ -1495,7 +1497,7 @@ class BedReader(Files):
             estart = [int(x) + start for x in estart.split(',') if x]
             if not len(estart)==len(elen):
                 raise StructureInforError('unmatched count of exon at line: {}'.format(line))
-            
+
             eend = [estart[x] + elen[x] for x, y in enumerate(elen)]
             _Exon = intervals(estart, eend)
             if cstart == cend:
@@ -1505,8 +1507,8 @@ class BedReader(Files):
                 _Cds = intervals(cstart, cend) & _Exon
                 attri = {'transcript_type': 'protein_coding'}
             yield Transcript(
-                name, chro, intervals(start, end), strand, 
-                exon=_Exon, cds=_Cds, infor=attri
+                name, chro, intervals(start, end), strand,
+                exon=_Exon, cds=_Cds, infor=attri, strict=self._strict
             )
 
 
@@ -1514,8 +1516,9 @@ class genePredReader(Files):
     '''
     '''
     __slots__ = ()
-    def __init__(self, refFlat):
+    def __init__(self, refFlat, strict=True):
         Files.__init__(self, refFlat)
+        self._strict = strict
 
     def __str__(self):
         return "<genePredReader object: \"{}\">".format(self._fos)
@@ -1525,7 +1528,7 @@ class genePredReader(Files):
 
     def __enter__(self):
         return self
- 
+
     def __exit__(self, rtype, value, trace):
         logger.debug(rtype)
         logger.debug(value)
@@ -1544,7 +1547,7 @@ class genePredReader(Files):
             eend = [int(x) for x in eend.split(',') if x]
             if not len(estart)==len(eend)==ecount:
                 raise StructureInforError('unmatched count of exon at line: {}'.format(line))
-            
+
             _Exon = intervals(estart, eend)
             if cstart == cend:
                 _Cds = Interval()
@@ -1556,6 +1559,173 @@ class genePredReader(Files):
                 attri['gene_id'] = Gname
                 attri['gene_name'] = Gname
             yield Transcript(
-                Tname, chro, intervals(start, end), strand, 
-                exon=_Exon, cds=_Cds, infor=attri
+                Tname, chro, intervals(start, end), strand,
+                exon=_Exon, cds=_Cds, infor=attri, strict=self._strict
             )
+
+
+def args_parser():
+    parser = argparse.ArgumentParser(
+        prog='pyGTF',
+        usage='python %(prog)s [option]  ',
+        description='Convert format of gene structure annotate, Extract sequence from reference',
+        formatter_class=argparse.RawTextHelpFormatter,
+        epilog='''Example:
+        python %(prog)s -i example.gff [-ift foramt --strict] -g example.gtf -b example.bed -f example.flat.txt
+        python %(prog)s -i example.gff -r example.fa -cdna exampel.cdna.fa
+        '''
+    )
+    parser.add_argument(
+        '-i', '--input',
+        dest='input', metavar='',
+        required=True,
+        help='[required], input file of gtf/gff/bed/genePred format'
+    )
+    parser.add_argument(
+        '-ift', '--input-format',
+        dest='input_format', metavar='',
+        choices=('gtf', 'gff', 'refseqgff', 'bed', 'genePred'),
+        help=('the format of input file, {gtf, gff, refseqgff, bed, genePred}, '
+              'default use input file suffix')
+    )
+    parser.add_argument(
+        '--strict',
+        dest='strict', action='store_true',
+        help='strict validation of gene intervals, default: False'
+    )
+
+    parser.add_argument(
+        '-g', '--gtf',
+        dest='gtf', metavar='', help='output gtf file'
+    )
+    parser.add_argument(
+        '-b', '--bed',
+        dest='bed', metavar='', help='output bed file'
+    )
+    parser.add_argument(
+        '-f', '--flat',
+        dest='genePred', metavar='',
+        help=('output genePred file, ref: '
+              'https://genome.ucsc.edu/FAQ/FAQformat#format9')
+    )
+
+    parser.add_argument(
+        '-r', '--reference',
+        dest='reference', metavar='',
+        help='input reference fasta file'
+    )
+    parser.add_argument(
+        '-cdna', '--cdna',
+        dest='cdna', metavar='',
+        help='output cdna sequence, required --refernce parameter'
+    )
+    parser.add_argument(
+        '-cds', '--cds',
+        dest='cds', metavar='',
+        help='output cds sequence, required --refernce parameter'
+    )
+    parser.add_argument(
+        '-utr', '--utr',
+        dest='utr', metavar='',
+        help='output utr sequence, required --refernce parameter'
+    )
+    parser.add_argument(
+        '-exon', '--exon',
+        dest='exon', metavar='',
+        help='output exon sequence, required --refernce parameter'
+    )
+    parser.add_argument(
+        '-intron', '--intron',
+        dest='intron', metavar='',
+        help='output intron sequence, required --refernce parameter'
+    )
+    args = parser.parse_args()
+    if any([args.cdna, args.cds, args.utr, args.exon, args.intron]) \
+        and not args.reference:
+        parser.print_help()
+        assert "", 'required reference file input'
+    if not any([args.gtf, args.bed, args.genePred, args.cdna, args.cds, \
+        args.utr, args.exon, args.intron]):
+        parser.print_help()
+        assert "", 'Not provide output file'
+    return args
+
+
+def __create_op_handle(fop):
+    if not fop:
+        return None
+    if os.path.exists(fop):
+        logger.warning('output file is exists, program will be overwrited!')
+    return open(fop, 'w')
+
+
+def __guess_file_format(fop):
+    filename, _, suffix = fop.rpartition('.')
+    if suffix in ('gz', 'bz', 'bz2'):
+        return __guess_file_format(filename)
+    if suffix.lower() == 'gff' and 'refseq' in filename.lower():
+        return 'refseqgff'
+    elif suffix.lower() in ('gtf', 'gff'):
+        return suffix.lower()
+    elif suffix.lower() == 'bed':
+        return 'bed'
+    elif suffix.lower() in ('flat', 'genepred'):
+        return 'genePred'
+    else:
+        raise Exception('unknown file format, please input format')
+
+
+def util():
+    args = args_parser()
+    inputfile, inputfmt, strict = args.input, args.input_format, args.strict
+    opgtf, opbed, opFlat = args.gtf, args.bed, args.genePred
+    genome, cdna, cds = args.reference, args.cdna, args.cds
+    utr, exon, intron = args.utr, args.exon, args.intron
+
+    if genome:
+        logger.info('parse genome fasta file ... ')
+        genome = {i.name: i.seq for i in FastaReader(genome)}
+
+    opgtf, opbed, opFlat, cdna, cds, utr, exon, intron = map(
+        __create_op_handle, [opgtf, opbed, opFlat, cdna, cds, utr, exon, intron]
+    )
+    if not inputfmt:
+        inputfmt = None
+    formatparser = {
+        'gtf': GTFReader, 'gff': GTFReader,
+        'bed': BedReader, 'genePred': genePredReader,
+        'refseqgff': RefSeqGFFReader
+    }
+    fmtparser = formatparser[inputfmt]
+    for trans in fmtparser(inputfile, strict=strict):
+        if opgtf:
+            trans.to_gtf(opgtf)
+        if opbed:
+            trans.to_gtf(opbed)
+        if opFlat:
+            trans.to_gtf(opFlat)
+        if cdna:
+            for seq in trans.extract_transcript_seq(genome):
+                seq.write_to_fasta_file(cdna)
+        if cds:
+            for seq in trans.extract_cds_seq(genome):
+                seq.write_to_fasta_file(cds)
+        if utr:
+            for seq in trans.extract_utr_seq(genome):
+                if not seq:
+                    continue
+                seq.write_to_fasta_file(utr)
+        if exon:
+            for seq in trans.extract_exon_seq(genome):
+                seq.write_to_fasta_file(exon)
+        if intron:
+            for seq in trans.extract_intron_seq(genome):
+                seq.write_to_fasta_file(intron)
+    map(
+        lambda x: x.close() if x else None,
+        [opgtf, opbed, opFlat, cdna, cds, utr, exon, intron]
+    )
+
+
+if __name__ == '__main__':
+    util()
