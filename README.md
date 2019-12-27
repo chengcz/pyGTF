@@ -2,19 +2,38 @@
 
 parse universal GTF/GFF file, return Transcript object, convert annotation infor as GTF, BED, GenePred format, and extract genome, transcript, CDS and UTR sequence with reference genome file
 
-### install
+### download
 
 ```bash
 git clone git@github.com:chengcz/pyGTF.git
 cd pyGTF
+```
 
+
+
+### usage(script)
+
+```bash
+python pyGTF.py -h
+
+# bed2gtf
+python pyGTF.py --input input.bed --input-format bed --gtf output.gtf
+
+# xxx
+```
+
+
+
+### usage(module)
+
+##### install
+
+```bash
 python setup.py install
 # done, enjoy
 ```
 
 
-
-### basic usage
 
 1. GTFReader
 
