@@ -66,7 +66,7 @@ class Files(object):
 
         for index, line in enumerate(self._fp):
             if index % 50000 == 0 and index != 0:
-                logger.info('working on line NO. of {}: {:,}'.format(
+                logger.debug('working on line NO. of {}: {:,}'.format(
                     os.path.basename(self._fos), index
                 ))
             try:
@@ -138,7 +138,7 @@ class Sequence(object):
             return False
         return True
 
-    def ReverseComplement(self, replace=False):
+    def reverse_complement(self, replace=False):
         if not self.is_nucl():
             return None
         rcseq = self._seq.translate(self.__transtab)[::-1]
@@ -171,7 +171,7 @@ class Sequence(object):
         fseq = ''
         for i in range(0, len(seq), length):
             fseq += seq[i : (i + length)] + '\n'
-        return fseq
+        return fseq.strip()
 
     def write_to_tab_file(self, fp):
         fp.write('{}\t{}\n'.format(self._id, self._seq))
@@ -682,9 +682,10 @@ class Transcript(object):
         try:
             self.__data_validation(strict)
         except StructureInforError as e:
-            logger.error('\n{}'.format(self._msg))
             if strict:
+                logger.error('\n{}'.format(self._msg))
                 raise StructureInforError(e)
+            logger.warning('\n{}'.format(self._msg))
         if self._strand == '-':
             self._utr5, self._utr3 = self._utr3, self._utr5
 
@@ -770,6 +771,16 @@ class Transcript(object):
     @property
     def length(self):
         return self._exon.length
+
+    @property
+    def intron(self):
+        TransRegion= AtomicInterval(self.exon.lower, self.exon.upper)
+        # intron = self._interval - self._exon
+        # intron = Interval(
+        #     *[x for x in intron if x.overlaps(TransRegion, False)]
+        # )
+        intron = TransRegion - self.exon
+        return intron
 
     @property
     def cds(self):
@@ -918,7 +929,7 @@ class Transcript(object):
         )
         fp.write(self.__list2str(Record))
 
-    def to_genePred(self, fp, refFlat=False):
+    def to_genePred(self, fp, refFlat=True):
         '''
         parameter
         ---------
@@ -990,6 +1001,8 @@ class Transcript(object):
         ---------
         seqfp: dict
             {chro: seq, }
+
+        return Sequence object
         '''
         seq = self.__extract_seq(seqfp, self._chrom, self._start, self._end)
         obj = Sequence(
@@ -999,10 +1012,11 @@ class Transcript(object):
         )
         if self._strand == '-':
             obj = obj.reverse_complement()
-        return (obj, )
+        return obj
 
     def extract_transcript_seq(self, seqfp):
         '''
+        return Sequence object
         '''
         seq = ''.join([
             self.__extract_seq(seqfp, self._chrom, x.lower, x.upper) for x in self._exon
@@ -1012,13 +1026,14 @@ class Transcript(object):
         )
         if self._strand == '-':
             obj = obj.reverse_complement()
-        return (obj, )
+        return obj
 
     def extract_cds_seq(self, seqfp):
         '''
+        return Sequence object
         '''
         if self._cds.is_empty():
-            return ()
+            return None
         seq = ''.join([
             self.__extract_seq(seqfp, self._chrom, x.lower, x.upper) for x in self._cds
         ])
@@ -1027,10 +1042,11 @@ class Transcript(object):
         )
         if self._strand == '-':
             obj = obj.reverse_complement()
-        return (obj, )
+        return obj
 
     def extract_exon_seq(self, seqfp):
         '''
+        return tuple of Sequence
         '''
         objlst = []
         exon_num = self.exon_count
@@ -1048,14 +1064,15 @@ class Transcript(object):
 
     def extract_intron_seq(self, seqfp):
         '''
+        return tuple of Sequence
         '''
-        _intron = self._interval - self._exon
-        if _intron.is_empty():
-            return ()
-        intron_num = self.exon_count - 1
+        if self.intron.is_empty():
+            return tuple()
+        intron_num = self.exon_count - 1    # len(self._exon)
+        # assert len(self.intron) == intron_num, (self.intron, self._exon)
         objlst = []
-        for index, x in enumerate(_intron):
-            x, y = self._exon[index],self._exon[index + 1]
+        for index, x in enumerate(self.intron):
+            # x, y = self._exon[index], self._exon[index + 1]
             order = index + 1 if self._strand == '+' else intron_num - index
             obj = Sequence(
                 '{}_intron{}'.format(self._id, order),
@@ -1069,9 +1086,10 @@ class Transcript(object):
 
     def extract_utr5_seq(self, seqfp):
         '''
+        return Sequence object
         '''
         if self._utr5.is_empty():
-            return ()
+            return None
         seq = ''.join([
             self.__extract_seq(seqfp, self._chrom, x.lower, x.upper) for x in self._utr5
         ])
@@ -1082,13 +1100,14 @@ class Transcript(object):
         )
         if self._strand == '-':
             obj = obj.reverse_complement()
-        return (obj, )
+        return obj
 
     def extract_utr3_seq(self, seqfp):
         '''
+        return Sequence object
         '''
         if self._utr3.is_empty():
-            return ()
+            return None
         seq = ''.join([
             self.__extract_seq(seqfp, self._chrom, x.lower, x.upper) for x in self._utr3
         ])
@@ -1099,14 +1118,15 @@ class Transcript(object):
         )
         if self._strand == '-':
             obj = obj.reverse_complement()
-        return (obj, )
+        return obj
 
     def extract_utr_seq(self, seqfp):
         '''
+        return tuple of Sequence
         '''
-        utr5, = self.extract_utr5_seq(seqfp)
-        utr3, = self.extract_utr3_seq(seqfp)
-        return (utr5, utr3)
+        utr5 = self.extract_utr5_seq(seqfp)
+        utr3 = self.extract_utr3_seq(seqfp)
+        return tuple([x for x in (utr5, utr3) if x is not None])
 
 
 class GTFReader(Files):
@@ -1254,7 +1274,7 @@ class GTFReader(Files):
 
     def __read_gtf(self):
         logger.info((
-            'Skip known annotation feature: \n    ({})'.format(', '.join(self._skip_feature))
+            'Skip Known Annotation Feature: \n    ({})'.format(', '.join(self._skip_feature))
         ))
         for line in Files.__iter__(self):
             if line.startswith('#') or not line.strip():
@@ -1467,7 +1487,7 @@ class RefSeqGFFReader(Files):
 class BedReader(Files):
     '''
     '''
-    __slots__ = ()
+    __slots__ = ('_strict')
     def __init__(self, bed, strict=True):
         Files.__init__(self, bed)
         self._strict = strict
@@ -1515,7 +1535,7 @@ class BedReader(Files):
 class genePredReader(Files):
     '''
     '''
-    __slots__ = ()
+    __slots__ = ('_strict')
     def __init__(self, refFlat, strict=True):
         Files.__init__(self, refFlat)
         self._strict = strict
@@ -1571,7 +1591,7 @@ def args_parser():
         description='Convert format of gene structure annotate, Extract sequence from reference',
         formatter_class=argparse.RawTextHelpFormatter,
         epilog='''Example:
-        python %(prog)s -i example.gff [-ift foramt --strict] -g example.gtf -b example.bed -f example.flat.txt
+        python %(prog)s -i example.gff [-ift format --strict] -g example.gtf -b example.bed -f example.flat.txt
         python %(prog)s -i example.gff -r example.fa -cdna exampel.cdna.fa
         '''
     )
@@ -1587,6 +1607,11 @@ def args_parser():
         choices=('gtf', 'gff', 'refseqgff', 'bed', 'genePred'),
         help=('the format of input file, {gtf, gff, refseqgff, bed, genePred}, '
               'default use input file suffix')
+    )
+    parser.add_argument(
+        '-s', '--subset',
+        dest='subset', metavar='',
+        help='text file, subset of gene list'
     )
     parser.add_argument(
         '--strict',
@@ -1609,32 +1634,33 @@ def args_parser():
               'https://genome.ucsc.edu/FAQ/FAQformat#format9')
     )
 
-    parser.add_argument(
+    argseq = parser.add_argument_group('Sequence arguments')
+    argseq.add_argument(
         '-r', '--reference',
         dest='reference', metavar='',
         help='input reference fasta file'
     )
-    parser.add_argument(
+    argseq.add_argument(
         '-cdna', '--cdna',
         dest='cdna', metavar='',
         help='output cdna sequence, required --refernce parameter'
     )
-    parser.add_argument(
+    argseq.add_argument(
         '-cds', '--cds',
         dest='cds', metavar='',
         help='output cds sequence, required --refernce parameter'
     )
-    parser.add_argument(
+    argseq.add_argument(
         '-utr', '--utr',
         dest='utr', metavar='',
         help='output utr sequence, required --refernce parameter'
     )
-    parser.add_argument(
+    argseq.add_argument(
         '-exon', '--exon',
         dest='exon', metavar='',
         help='output exon sequence, required --refernce parameter'
     )
-    parser.add_argument(
+    argseq.add_argument(
         '-intron', '--intron',
         dest='intron', metavar='',
         help='output intron sequence, required --refernce parameter'
@@ -1655,7 +1681,7 @@ def __create_op_handle(fop):
     if not fop:
         return None
     if os.path.exists(fop):
-        logger.warning('output file is exists, program will be overwrited!')
+        logger.warning('file "{}" is exists, overwrited!'.format(fop))
     return open(fop, 'w')
 
 
@@ -1665,7 +1691,7 @@ def __guess_file_format(fop):
         return __guess_file_format(filename)
     if suffix.lower() == 'gff' and 'refseq' in filename.lower():
         return 'refseqgff'
-    elif suffix.lower() in ('gtf', 'gff'):
+    elif suffix.lower() in ('gtf', 'gff', 'gff3'):
         return suffix.lower()
     elif suffix.lower() == 'bed':
         return 'bed'
@@ -1677,43 +1703,51 @@ def __guess_file_format(fop):
 
 def util():
     args = args_parser()
-    inputfile, inputfmt, strict = args.input, args.input_format, args.strict
+    inputfile, inputfmt = args.input, args.input_format
+    genelst, strict  = args.subset, args.strict
     opgtf, opbed, opFlat = args.gtf, args.bed, args.genePred
     genome, cdna, cds = args.reference, args.cdna, args.cds
     utr, exon, intron = args.utr, args.exon, args.intron
 
+    if genelst:
+        with open(genelst) as fi:
+            genelst = [i.strip().split() for i in fi]
+
     if genome:
-        logger.info('parse genome fasta file ... ')
+        logger.info('parse genome fasta file: {} ... '.format(genome))
         genome = {i.name: i.seq for i in FastaReader(genome)}
+        logger.info('done, parse fasta.')
 
     opgtf, opbed, opFlat, cdna, cds, utr, exon, intron = map(
         __create_op_handle, [opgtf, opbed, opFlat, cdna, cds, utr, exon, intron]
     )
     if not inputfmt:
-        inputfmt = None
+        inputfmt = __guess_file_format(inputfile)
     formatparser = {
         'gtf': GTFReader, 'gff': GTFReader,
         'bed': BedReader, 'genePred': genePredReader,
         'refseqgff': RefSeqGFFReader
     }
     fmtparser = formatparser[inputfmt]
+    logger.info('parse gene structure file: {} ... '.format(inputfile))
     for trans in fmtparser(inputfile, strict=strict):
+        if genelst and (trans.id not in genelst):
+            continue
+
         if opgtf:
             trans.to_gtf(opgtf)
         if opbed:
-            trans.to_gtf(opbed)
+            trans.to_bed(opbed)
         if opFlat:
-            trans.to_gtf(opFlat)
+            trans.to_genePred(opFlat, refFlat=True)
         if cdna:
-            for seq in trans.extract_transcript_seq(genome):
-                seq.write_to_fasta_file(cdna)
+            seq = trans.extract_transcript_seq(genome)
+            seq.write_to_fasta_file(cdna)
         if cds:
-            for seq in trans.extract_cds_seq(genome):
-                seq.write_to_fasta_file(cds)
+            seq = trans.extract_cds_seq(genome)
+            seq.write_to_fasta_file(cds)
         if utr:
             for seq in trans.extract_utr_seq(genome):
-                if not seq:
-                    continue
                 seq.write_to_fasta_file(utr)
         if exon:
             for seq in trans.extract_exon_seq(genome):
