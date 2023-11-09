@@ -809,7 +809,9 @@ class Transcript(object):
                 self._exon = self._cds
                 self._utr = Interval()
         else:
-            raise StructureInforError("Exon & Cds interval both is missing.")
+            self._exon = intervals(self._start, self._end)
+            logger.warning("transcript interval as Exon interval, {}".format(self._id))
+            # raise StructureInforError("Exon & Cds interval both is missing.")
 
     def __data_validation(self, strict=True):
         if self._strand not in ("-", "+"):
@@ -819,8 +821,8 @@ class Transcript(object):
         if self._exon.is_empty():
             raise StructureInforError("Exon interval is wrong.")
 
-        if self._exon.to_atomic() != self._interval:
-            raise StructureInforError("Unmatched interval between Transcript with Exon.")
+        # if self._exon.to_atomic() != self._interval:
+        #     raise StructureInforError("Unmatched interval between Transcript with Exon.")
         if (not self._cds.is_empty()) or (not self._utr.is_empty()):
             if self._exon != (self._cds | self._utr):
                 raise StructureInforError("Unmatched interval between Exon with CDS & UTR.")
@@ -1085,7 +1087,7 @@ class Transcript(object):
         eend = "".join(["{},".format(i.upper) for i in self._exon])
 
         Record = [
-            self.name,
+            self._id,
             self._chrom,
             self._strand,
             self._start,
@@ -1292,6 +1294,17 @@ class Transcript(object):
         utr3 = self.extract_utr3_seq(seqfp)
         return tuple([x for x in (utr5, utr3) if x is not None])
 
+    def extract_promoter(self, seqfp, flank=2000):
+        """
+        """
+        if self._strand == "+":
+            seq = self.__extract_seq(seqfp, self._chrom, self._start - flank, self._start)
+            seq = Sequence("{} {}:{}-{} promoter".format(self._id, self._chrom, self._start - flank, self._start), seq)
+        elif self._strand == "-":
+            seq = self.__extract_seq(seqfp, self._chrom, self._end, self._end + flank)
+            seq = Sequence("{} {}:{}-{} promoter".format(self._id, self._chrom, self._end, self._end + flank), seq)
+            seq = seq.reverse_complement()
+        return seq
 
 class GTFReader(Files):
     """
@@ -2028,6 +2041,13 @@ def args_parser():
         metavar="",
         help="output intron sequence",
     )
+    argseq.add_argument(
+        "-promoter",
+        "--promoter",
+        dest="promoter",
+        metavar="",
+        help="output promoter sequence",
+    )
     args = parser.parse_args()
     if (
         any([args.cdna, args.cds, args.utr, args.exon, args.intron])
@@ -2038,7 +2058,7 @@ def args_parser():
         sys.exit(1)
     if not any(
         [args.gtf, args.bed, args.genePred,
-        args.cdna, args.cds, args.utr, args.exon, args.intron]
+         args.cdna, args.cds, args.utr, args.exon, args.intron, args.promoter]
     ):
         parser.print_help()
         logger.error("Not provide output file")
@@ -2093,6 +2113,7 @@ def util():
     opgtf, opbed, opFlat = args.gtf, args.bed, args.genePred
     genome, cdna, cds = args.reference, args.cdna, args.cds
     utr, exon, intron = args.utr, args.exon, args.intron
+    promoter = args.promoter
 
     if genelst:
         with iopen(genelst) as fi:
@@ -2103,8 +2124,8 @@ def util():
         genome = {i.name: i.seq for i in FastaReader(genome)}
         logger.info("done, parse fasta.")
 
-    opgtf, opbed, opFlat, cdna, cds, utr, exon, intron = map(
-        __create_op_handle, [opgtf, opbed, opFlat, cdna, cds, utr, exon, intron]
+    opgtf, opbed, opFlat, cdna, cds, utr, exon, intron, promoter = map(
+        __create_op_handle, [opgtf, opbed, opFlat, cdna, cds, utr, exon, intron, promoter]
     )
     if not inputfmt:
         inputfmt = __guess_file_format(inputfile)
@@ -2144,9 +2165,13 @@ def util():
         if intron:
             for seq in trans.extract_intron_seq(genome):
                 seq.write_to_fasta_file(intron)
+        if promoter:
+            seq = trans.extract_promoter(genome)
+            seq.write_to_fasta_file(promoter)
+
     map(
         lambda x: x.close() if x else None,
-        [opgtf, opbed, opFlat, cdna, cds, utr, exon, intron],
+        [opgtf, opbed, opFlat, cdna, cds, utr, exon, intron, promoter],
     )
 
 
