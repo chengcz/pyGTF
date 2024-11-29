@@ -18,7 +18,7 @@ except ImportError:
     maketrans = str.maketrans
 
 __package__ = "pyGTF"
-__version__ = "0.2.0"
+__version__ = "1.0.0"
 __licence__ = "MIT"
 __author__ = "cheng cz."
 __url__ = "https://github.com/chengcz/pyGTF"
@@ -1355,6 +1355,8 @@ class GTFReader(Files):
             "three_prime_utr",
             "3UTR",
             "UTR",
+            "UTR_5",
+            "UTR_3",
         }
         self._keep_feature = {
             "mRNA",
@@ -1377,6 +1379,8 @@ class GTFReader(Files):
             "three_prime_utr",
             "3UTR",
             "UTR",
+            "UTR_5",
+            "UTR_3",
         }
         self._skip_feature = {
             "chromosome",
@@ -2115,9 +2119,18 @@ def util():
     utr, exon, intron = args.utr, args.exon, args.intron
     promoter = args.promoter
 
+    SubGeneList = dict()
     if genelst:
         with iopen(genelst) as fi:
-            genelst = [i.split()[0] for i in fi]
+            for line in fi:
+                if line.startswith("#"):
+                    continue
+                lines = line.strip().split()
+                if len(lines)>1:
+                    gene, newname = lines[:2]
+                else:
+                    gene = newname = lines[0]
+                SubGeneList[gene] = newname
 
     if genome:
         logger.info("parse genome fasta file: {} ... ".format(genome))
@@ -2141,8 +2154,12 @@ def util():
     fmtparser = formatparser[inputfmt]
     logger.info("parse gene structure file: {} ... ".format(inputfile))
     for trans in fmtparser(inputfile, strict=strict):
-        if genelst and (trans.id not in genelst):
+        if SubGeneList and (trans.id not in SubGeneList):
             continue
+
+        rid = trans.id
+        trans._id = SubGeneList.get(rid, rid)
+        trans._attri["gene_id"] = SubGeneList.get(rid, rid)
 
         if opgtf:
             trans.to_gtf(opgtf)
