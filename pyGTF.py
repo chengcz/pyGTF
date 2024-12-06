@@ -357,7 +357,7 @@ class AtomicInterval(object):
         return self.__repr__()
 
     def __repr__(self):
-        return "AtomicInterval: [{}, {})".format(self._lower, self._upper)
+        return f'AtomicInterval: [{self._lower}, {self._upper})'
 
     @property
     def lower(self):
@@ -696,6 +696,213 @@ def intervals(start, end):
         return Interval(AtomicInterval(start, end))
     else:
         raise Exception("wrong input")
+
+
+class GenomicInterval(object):
+    '''
+    parameter
+    ---------
+    chrom:     string, [required]
+    start:     int/list, [required]
+    end:       int/list, [required]
+    name:      string
+    strand:    string, (-, +, None)
+    '''
+    __slots__ = ('_chrom', '_intervals', '_attr')
+    def __init__(self, chrom, start, end, name=None, strand=None, **attr):
+        self._chrom = chrom
+        self._intervals = self._input_to_interval(start, end)
+        self._name = name
+        self._strand = strand
+        self._attr = attr
+
+    @staticmethod
+    def _input_to_interval(start, end):
+        region = []
+        if isinstance(start, int) and isinstance(end, int):
+            region.append(AtomicInterval(start, end))
+        elif isinstance(start, list) and isinstance(end, list):
+            if len(start) != len(end):
+                raise Exception('length of start and end is unequal in Input interval')
+            for x, y in zip(start, end):
+                if not (isinstance(x, int) and isinstance(y, int)):
+                    raise TypeError('Input interval data type is not int')
+                region.append(AtomicInterval(x, y))
+        else:
+            raise TypeError('Unsupported input data type!')
+        return Interval(region)
+
+    def __str__(self):
+        if self.strand:
+            return f'GenomicInterval: {self.chrom}:{self.start}-{self.end}:{self.strand}'
+        else:
+            return f'GenomicInterval: {self.chrom}:{self.start}-{self.end}'
+
+    def __repr__(self):
+        return self.__str__()
+
+    @property
+    def chrom(self):
+        return self._chrom
+
+    @property
+    def start(self):
+        return self._intervals.lower
+
+    @property
+    def end(self):
+        return self._intervals.upper
+
+    @property
+    def strand(self):
+        return self._strand
+
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def interval(self):
+        return self._intervals
+
+    def append_interval(self, start, end):
+        region = AtomicInterval(start, end)
+        self._intervals = self._intervals | region
+
+    def mask_interval(self, start, end):
+        region = AtomicInterval(start, end)
+        self._intervals = self._intervals - region
+
+    def overlaps(self, other):
+        if isinstance(other, GenomicInterval):
+            if self._chrom == other.chrom:
+                if self._intervals.overlaps(self.region):
+                    return True
+            return False
+        else:
+            return NotImplemented
+
+    def __str__(self):
+        return self.__repr__()
+
+    def __repr__(self):
+        regions = [f'{x.lower} - {x.upper}' for x in self._intervals]
+        return 'GenomicInterval: {}: {}'.format(self._chrom, " / ".join(regions))
+
+    def __len__(self):
+        return sum([len(x) for x in self._intervals])
+
+    def __eq__(self, other):
+        if isinstance(other, GenomicInterval):
+            if (self._chrom == other.chrom) and (self._intervals == other.region):
+                return True
+            return False
+        else:
+            return NotImplemented
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
+    def __lt__(self, other):
+        if isinstance(other, GenomicInterval):
+            if (self._chrom == other.chrom):
+                return self._intervals < other.region
+            return False
+        elif isinstance(other, int):
+            return self._intervals.upper < other
+        else:
+            return NotImplemented
+
+    def __le__(self, other):
+        if isinstance(other, GenomicInterval):
+            if (self._chrom == other.chrom):
+                return self._intervals <= other.region
+            return False
+        elif isinstance(other, int):
+            return self._intervals.upper <= other
+        else:
+            return NotImplemented
+
+    def __gt__(self, other):
+        if isinstance(other, GenomicInterval):
+            if (self._chrom == other.chrom):
+                return self._intervals > other.region
+            return False
+        elif isinstance(other, int):
+            return self._intervals.lower > other
+        else:
+            return NotImplemented
+
+    def __ge__(self, other):
+        if isinstance(other, GenomicInterval):
+            if (self._chrom == other.chrom):
+                return self._intervals >= other.region
+            return False
+        elif isinstance(other, int):
+            return self._intervals.lower >= other
+        else:
+            return NotImplemented
+
+    def __and__(self, other):
+        if isinstance(other, GenomicInterval):
+            if self._chrom != other.chrom:
+                return NotImplemented
+            new_intervals = []
+            for interval in self.region:
+                for o_interval in other.region:
+                    new_intervals.append(interval & o_interval)
+            return GenomicInterval(self.chrom, Interval(*new_intervals))
+        else:
+            return NotImplemented
+
+    def __rand__(self, other):
+        return self & other
+
+    def __or__(self, other):
+        if isinstance(other, GenomicInterval):
+            if self._chrom != other.chrom:
+                return NotImplemented
+            region = Interval(*(self.region._intervals + other.region._intervals))
+            return GenomicInterval(self.chrom, region)
+        else:
+            return NotImplemented
+
+    def __ror__(self, other):
+        return self | other
+
+    def __sub__(self, other):
+        if isinstance(other, GenomicInterval):
+            if self._chrom != other.chrom:
+                return NotImplemented
+            return self & ~other
+        else:
+            return NotImplemented
+
+    def __rsub__(self, other):
+        return other & ~self
+
+    def __invert__(self):
+        intervals = [~x for x in self.region._intervals]
+        intersection = intervals[0]
+        for interval in intervals:
+            intersection = intersection & interval
+        return GenomicInterval(self.chrom, Interval(*intersection))
+
+    def __contains__(self, other):
+        if isinstance(other, GenomicInterval):
+            if self._chrom != other.chrom:
+                return False
+            for o_interval in other.region._intervals:
+                if o_interval not in self.region:
+                    return False
+            return True
+        elif isinstance(other, int):
+            for interval in self.region._intervals:
+                if other in interval:
+                    return True
+            return False
+        else:
+            return NotImplemented
 
 
 class StructureInforError(Exception):
