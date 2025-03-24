@@ -83,6 +83,9 @@ class initLogging(object):
         self._logger_.exception(msg, *args, **kwargs)
 
 
+logger = initLogging()
+
+
 class Files(object):
     """
     open file as file handle for iterator
@@ -2145,6 +2148,24 @@ class genePredReader(Files):
             )
 
 
+def _parse_mapping_file(mapping_file):
+    """
+    """
+    chromName = {}
+    if mapping_file and exists(mapping_file):
+        with iopen(mapping_file) as fi:
+            for line in fi:
+                if line.startswith("#"):
+                    continue
+                lines = line[:-1].split()
+                if len(lines) > 1:
+                    oldname, newname = lines[:2]
+                else:
+                    oldname = newname = lines[0]
+                chromName[oldname] = newname
+    return chromName
+
+
 def args_parser():
     parser = argparse.ArgumentParser(
         prog="pyGTF.py",
@@ -2169,14 +2190,14 @@ def args_parser():
     parser.add_argument(
         "-i",
         "--input",
-        dest="input",
+        dest="input_file",
         metavar="",
         required=True,
         help="[required], input file of gtf/gff/bed/genePred format",
     )
     parser.add_argument(
-        "-ift",
-        "--input-format",
+        "-ft",
+        "--format",
         dest="input_format",
         metavar="",
         choices=("gtf", "gff", "refseqgff", "bed", "genePred"),
@@ -2185,74 +2206,86 @@ def args_parser():
     parser.add_argument(
         "-s",
         "--subset",
-        dest="subset",
+        dest="subset_mapping_file",
         metavar="",
         help="text file, subset of gene list",
     )
     parser.add_argument(
         "--strict",
-        dest="strict",
+        dest="strict_mode",
         action="store_true",
         help="strict validation of gene intervals, default: False",
     )
 
-    parser.add_argument("-g", "--gtf", dest="gtf", metavar="", help="output gtf file")
-    parser.add_argument("-b", "--bed", dest="bed", metavar="", help="output bed file")
-    parser.add_argument(
+    aParams = parser.add_argument_group("[Output Annot Params]")
+    aParams.add_argument(
+        "-g", "--gtf",
+        dest="gtf", metavar="", help="output gtf file"
+    )
+    aParams.add_argument(
+        "-b", "--bed",
+        dest="bed", metavar="", help="output bed file"
+    )
+    aParams.add_argument(
         "-f",
         "--flat",
-        dest="genePred",
-        metavar="",
-        help=(
-            "output genePred file, ref: "
-            "https://genome.ucsc.edu/FAQ/FAQformat#format9"
-        ),
+        dest="genePred", metavar="",
+        help="output genePred file, ref: https://genome.ucsc.edu/FAQ/FAQformat#format9",
     )
 
-    argseq = parser.add_argument_group("Sequence arguments")
-    argseq.add_argument(
+    sParams = parser.add_argument_group("[Sequence Params]")
+    sParams.add_argument(
         "-r",
         "--reference",
-        dest="reference",
+        dest="reference_fasta_file",
         metavar="",
         help="input reference fasta file",
     )
-    argseq.add_argument(
+    sParams.add_argument(
+        "-m",
+        "--mapping",
+        dest="mapping_file",
+        metavar="",
+        help="chrom id mapping file, rename chrom id",
+    )
+
+    osParams = parser.add_argument_group("[Sequence Output Params]")
+    osParams.add_argument(
         "-cdna",
         "--cdna",
         dest="cdna",
         metavar="",
         help="output cdna sequence",
     )
-    argseq.add_argument(
+    osParams.add_argument(
         "-cds",
         "--cds",
         dest="cds",
         metavar="",
         help="output cds sequence",
     )
-    argseq.add_argument(
+    osParams.add_argument(
         "-utr",
         "--utr",
         dest="utr",
         metavar="",
         help="output utr sequence",
     )
-    argseq.add_argument(
+    osParams.add_argument(
         "-exon",
         "--exon",
         dest="exon",
         metavar="",
         help="output exon sequence",
     )
-    argseq.add_argument(
+    osParams.add_argument(
         "-intron",
         "--intron",
         dest="intron",
         metavar="",
         help="output intron sequence",
     )
-    argseq.add_argument(
+    osParams.add_argument(
         "-promoter",
         "--promoter",
         dest="promoter",
@@ -2260,24 +2293,23 @@ def args_parser():
         help="output promoter sequence",
     )
     args = parser.parse_args()
-    if (
-        any([args.cdna, args.cds, args.utr, args.exon, args.intron])
-        and not args.reference
-    ):
+
+    output_fasta = [args.cdna, args.cds, args.utr, args.exon, args.intron, args.promoter]
+    if any(map(lambda x: x is not None, output_fasta)) and (args.reference_fasta_file is None):
         parser.print_help()
         logger.error("required --reference parameter")
-        sys.exit(1)
-    if not any(
-        [args.gtf, args.bed, args.genePred,
-         args.cdna, args.cds, args.utr, args.exon, args.intron, args.promoter]
-    ):
+        exit(1)
+
+    output_annot = [args.gtf, args.bed, args.genePred]
+    if all(map(lambda x: x is None, output_annot + output_fasta)):
         parser.print_help()
         logger.error("Not provide output file")
-        sys.exit(1)
+        exit(1)
+
     return args
 
 
-def __create_op_handle(fop):
+def _create_op_handle(fop):
     if not fop:
         return None
     if exists(fop):
@@ -2285,7 +2317,7 @@ def __create_op_handle(fop):
     return iopen(fop, "w")
 
 
-def __guess_file_format(fop):
+def _guess_file_format(fop):
     """
 
     return:
@@ -2319,36 +2351,35 @@ def __guess_file_format(fop):
 
 def util():
     args = args_parser()
-    inputfile, inputfmt = args.input, args.input_format
-    genelst, strict = args.subset, args.strict
+    inputfile, inputfmt = args.input_file, args.input_format
+
+    subset_mapping_file, strict_mode = args.subset_mapping_file, args.strict_mode
+    # output file
     opgtf, opbed, opFlat = args.gtf, args.bed, args.genePred
-    genome, cdna, cds = args.reference, args.cdna, args.cds
-    utr, exon, intron = args.utr, args.exon, args.intron
-    promoter = args.promoter
+    # input sequence file
+    genome_fasta_file, mapping_file = args.reference_fasta_file, args.mapping_file
+    # output sequence file
+    cdna, cds = args.cdna, args.cds
+    utr, exon, intron, promoter = args.utr, args.exon, args.intron, args.promoter
 
-    SubGeneList = dict()
-    if genelst:
-        with iopen(genelst) as fi:
-            for line in fi:
-                if line.startswith("#"):
-                    continue
-                lines = line.strip().split()
-                if len(lines)>1:
-                    gene, newname = lines[:2]
-                else:
-                    gene = newname = lines[0]
-                SubGeneList[gene] = newname
+    ##########
+    ### starting
+    subGeneList = _parse_mapping_file(subset_mapping_file)
 
-    if genome:
-        logger.info("parse genome fasta file: {} ... ".format(genome))
-        genome = {i.name: i.seq for i in FastaReader(genome)}
+    if genome_fasta_file:
+        logger.info("parse genome fasta file: {} ... ".format(genome_fasta_file))
+        chromName = _parse_mapping_file(mapping_file)
+        genomeSeqDict = {
+            chromName.get(i.name, i.name): i.seq
+            for i in FastaReader(genome_fasta_file)
+        }
         logger.info("done, parse fasta.")
 
     opgtf, opbed, opFlat, cdna, cds, utr, exon, intron, promoter = map(
-        __create_op_handle, [opgtf, opbed, opFlat, cdna, cds, utr, exon, intron, promoter]
+        _create_op_handle, [opgtf, opbed, opFlat, cdna, cds, utr, exon, intron, promoter]
     )
     if not inputfmt:
-        inputfmt = __guess_file_format(inputfile)
+        inputfmt = _guess_file_format(inputfile)
         logger.info("guess input file format: {}".format(inputfmt))
 
     formatparser = {
@@ -2360,46 +2391,45 @@ def util():
     }
     fmtparser = formatparser[inputfmt]
     logger.info("parse gene structure file: {} ... ".format(inputfile))
-    for trans in fmtparser(inputfile, strict=strict):
-        if SubGeneList and (trans.id not in SubGeneList):
+    for trans in fmtparser(inputfile, strict=strict_mode):
+        if subGeneList and (trans.id not in subGeneList):
             continue
 
         rid = trans.id
-        trans._id = SubGeneList.get(rid, rid)
-        trans._attri["gene_id"] = SubGeneList.get(rid, rid)
+        trans._id = subGeneList.get(rid, rid)
+        trans._attri["gene_id"] = subGeneList.get(rid, rid)
 
-        if opgtf:
+        if opgtf is not None:
             trans.to_gtf(opgtf)
-        if opbed:
+        if opbed is not None:
             trans.to_bed(opbed)
-        if opFlat:
+        if opFlat is not None:
             trans.to_genePred(opFlat, refFlat=True)
-        if cdna:
-            seq = trans.extract_transcript_seq(genome)
+
+        if cdna is not None:
+            seq = trans.extract_transcript_seq(genomeSeqDict)
             seq.write_to_fasta_file(cdna)
-        if cds:
-            seq = trans.extract_cds_seq(genome)
+        if cds is not None:
+            seq = trans.extract_cds_seq(genomeSeqDict)
             seq.write_to_fasta_file(cds)
-        if utr:
-            for seq in trans.extract_utr_seq(genome):
+        if utr is not None:
+            for seq in trans.extract_utr_seq(genomeSeqDict):
                 seq.write_to_fasta_file(utr)
-        if exon:
-            for seq in trans.extract_exon_seq(genome):
+        if exon is not None:
+            for seq in trans.extract_exon_seq(genomeSeqDict):
                 seq.write_to_fasta_file(exon)
-        if intron:
-            for seq in trans.extract_intron_seq(genome):
+        if intron is not None:
+            for seq in trans.extract_intron_seq(genomeSeqDict):
                 seq.write_to_fasta_file(intron)
-        if promoter:
-            seq = trans.extract_promoter(genome)
+        if promoter is not None:
+            seq = trans.extract_promoter(genomeSeqDict)
             seq.write_to_fasta_file(promoter)
 
     map(
-        lambda x: x.close() if x else None,
+        lambda x: x.close() if (x is not None) else None,
         [opgtf, opbed, opFlat, cdna, cds, utr, exon, intron, promoter],
     )
 
-
-logger = initLogging()
 
 if __name__ == "__main__":
     util()
