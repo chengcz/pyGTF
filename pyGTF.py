@@ -1692,10 +1692,7 @@ class GTFReader(Files):
             chro, _, feature, start, end, _, strand, _, attr, t_id = line
 
             if feature in self._transcript_feature:
-                try:
-                    geneid = attr.pop("gene_id")
-                except KeyError:
-                    geneid = attr.pop("Parent")
+                geneid = attr.pop("gene_id") if ("gene_id" in attr) else attr.pop("Parent")
                 t_info = {"gene_id": geneid}
                 t_info.update(attr)
                 annot.setdefault((chro, strand, t_id), {})["summary"] = [
@@ -2337,10 +2334,15 @@ def _guess_file_format(fop):
             continue
     lines = line[:-1].split("\t")
 
-    if (len(lines) == 9) or (suffix in ("gtf", "gff", "gff3")):
+    if (len(lines) == 9):
         if ("refseq" in filename):
             return "refseqgff"
-        return "gtf"
+        if suffix == "gtf":
+            return "gtf"
+        elif suffix in ("gff", "gff3"):
+            return "gff"
+        else:
+            raise TypeError("unknown gtf/gff file format, please input format")
     elif len(lines) == 12 or (suffix == "bed"):
         return "bed"
     elif (len(lines) in (10, 11)) or (suffix in ("flat", "genepred")):
@@ -2392,12 +2394,12 @@ def util():
     fmtparser = formatparser[inputfmt]
     logger.info("parse gene structure file: {} ... ".format(inputfile))
     for trans in fmtparser(inputfile, strict=strict_mode):
-        if subGeneList and (trans.id not in subGeneList):
-            continue
-
-        rid = trans.id
-        trans._id = subGeneList.get(rid, rid)
-        trans._attri["gene_id"] = subGeneList.get(rid, rid)
+        if subGeneList:
+            if (trans.id not in subGeneList):
+                continue
+            rid = subGeneList[trans.id]
+            trans._id = rid
+            # trans._attri["gene_id"] = subGeneList.get(rid, rid)
 
         if opgtf is not None:
             trans.to_gtf(opgtf)
